@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+
+#
+# gitctl - simple ~/.ssh/authorized_keys wrapper script to act as a tiny
+# and extremely lightweight bash-only gatekeeper for git, the version
+# control system.
+#
+# Written by: Armin Jenewein <a@m2m.pm>
+#
+
+basename="${0##*/}"
+repodir="$HOME/repositories/"
+
+# load settings from ~/.gitctl.conf if present
+# NOTE: you can set $servername here(!)
+if [[ -f $HOME/.gitctl.conf ]]; then
+  . $HOME/.gitctl.conf
+fi
+
+if [[ -z $servername ]]; then
+  echo "ERROR: environment variable $servername must be set"
+  exit 200
+fi
+
+mkdir -p "$repodir"
+
+error () {
+  echo "${0##*/}: ERROR: $@"
+}
+
+msg () {
+  echo "[${0##*/}] $@"
+}
+
+welcome () {
+  echo
+	echo "[${basename}] This is ${basename}, running at: $(hostname -f)"
+  echo
+  echo
+  echo "You can clone a repository using: "
+  echo "$ git clone ssh://git@${servername}/home/git/repositories/<REPOSITORY>"
+  echo
+  echo "Use \"gitctl help\" to see further usage information"
+}
+
+usage () {
+	echo
+  echo "USAGE: ${basename} <COMMAND> <ARG(S)>"
+  echo
+  echo "create <NAME>       - Create git repository with name <NAME>"
+  echo "list                - List currently hosted git repositories"
+  echo "remove <NAME>       - Remove git repository with name <NAME>"
+  echo "status              - Show disk usage status of hosted repositories"
+  echo "help                - (This) usage information screen"
+	echo
+  echo "You can clone a repository using: "
+  echo "$ git clone ssh://git@${servername}/home/git/repositories/<REPOSITORY>"
+  echo
+}
+
+create () {
+  if [[ -d "$repodir/$@" ]]; then
+    error "Repository $@ already exists."
+    exit 255
+  else
+		echo
+		msg "Creating repository: $@"
+		echo
+    mkdir "$repodir/$@"
+    cd "$repodir/$@"
+    git init --bare .
+    cd ~-
+    echo
+		echo "Repository has been created. You can clone it using: "
+    echo "$ git clone ssh://git@${servername}/home/git/repositories/$@"
+    echo
+		echo "To add it as a remote to an existing directory, try: "
+		echo "$ git remote add origin ssh://git@${servername}/home/git/repositories/$@"
+    echo "$ git push --all"
+    echo
+  fi
+}
+
+list () {
+  echo
+  msg "List of currently hosted git repositories:"
+  echo
+  cd $repodir
+  ls
+  echo
+  cd ~-
+  echo "To clone a repository, use: "
+	echo "$ git clone ssh://git@${servername}/home/git/repositories/<REPOSITORY>"
+  echo
+}
+
+remove () {
+  echo
+	msg "Removing repository: $@"
+	echo
+  cd "$repodir"
+  if [[ ! -d "$@" ]]; then error "Repository $@ could not be found."; echo; exit 1; fi
+  #rm -rf "$@"
+  datestring="$(date '+%Y-%m-%d_%H-%M-%S')"
+  mv "$@" ".${@}__${datestring}"
+  if [[ "$?" -gt 0 ]]; then
+    error "Repository $@ was NOT removed successfully. Please check."
+  else
+    echo "Repository $@ successfully removed."
+  fi
+  cd ~-
+  echo
+}
+
+cstatus () {
+  echo
+  msg "Disk usage of hosted repositories: "
+  echo
+  cd "$repodir"
+  for i in *; do
+    echo -n "$i "
+    du="$(du -sh "$i" | sed -E 's/^([0-9a-zA-Z]*).*$/\1/')"
+    echo "($du)"
+  done
+  cd ~-
+  echo
+}
+
+case "$1" in
+  usage|help|--help)
+    shift
+    welcome
+    usage
+  ;;
+  create)
+    shift
+    create "$@"
+  ;;
+  list)
+    shift
+    list
+  ;;
+	remove)
+    shift
+		remove "$@"
+  ;;
+  status)
+    shift
+		cstatus "$@"
+  ;;
+  '')
+    welcome
+    echo
+    error "No command specified. Try \"help\"."
+  ;;
+   *)
+    error "Usage Error. Got arguments: $@"
+    usage
+  ;;
+esac
+
